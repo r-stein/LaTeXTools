@@ -290,5 +290,13 @@ LaTeX Package keymap for Linux
 			{ "key": "selection_empty", "operator": "equal", "operand": true, "match_all": true },
 			{ "key": "following_text", "operator": "regex_match", "operand": "^$", "match_all": true }
 		]
-	}
+	},
+
+	// Fill all command
+        // Similar to latexing's fill all command
+        {       "keys": ["ctrl+l", "ctrl+f"],
+                "context":  [
+                        {"key": "selector", "operator": "equal", "operand": "text.tex.latex"},
+                        ],
+                "command": "latex_fill_all"}
 ]
