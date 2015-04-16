@@ -27,11 +27,26 @@ class LatexGenPkgCacheCommand(sublime_plugin.WindowCommand):
         else:
             delim = ':'
 
+        # Need to make sure that kpsewhich is on our PATH
+        # Read from settings file (see makePDF.py)
+
+        old_path = os.environ["PATH"]
+        s = sublime.load_settings("LaTeXTools.sublime-settings")
+        platform_settings  = s.get(sublime.platform())
+        texpath = platform_settings['texpath']
+        if not _ST3:
+            os.environ["PATH"] = os.path.expandvars(texpath).encode(sys.getfilesystemencoding())
+        else:
+            os.environ["PATH"] = os.path.expandvars(texpath)
+
         # Search path.
         p = sp.Popen("kpsewhich --show-path=tex", shell = True, stdout = sp.PIPE)
         pkg_path = p.communicate()[0].decode('utf-8')
         p = sp.Popen("kpsewhich --show-path=bst", shell = True, stdout = sp.PIPE)
         bst_path = p.communicate()[0].decode('utf-8')
+
+        # Restore old path
+        os.environ["PATH"] = old_path
         
         # For installed packages.
         installed_pkg = []
