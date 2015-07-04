@@ -10,6 +10,7 @@ else:
 
 import subprocess as sp
 import os
+import sys
 import json
 
 # Generating cache for installed latex packages, classes and bst.
@@ -40,9 +41,10 @@ class LatexGenPkgCacheCommand(sublime_plugin.WindowCommand):
             os.environ["PATH"] = os.path.expandvars(texpath)
 
         # Search path.
-        p = sp.Popen("kpsewhich --show-path=tex", shell = True, stdout = sp.PIPE)
+        # Note: must pass environment for Yosemite **AND** must send stderr to STDOUT. Crucial!
+        p = sp.Popen("kpsewhich --show-path=tex", shell = True, stdout = sp.PIPE, stderr = sp.STDOUT, env = os.environ)
         pkg_path = p.communicate()[0].decode('utf-8')
-        p = sp.Popen("kpsewhich --show-path=bst", shell = True, stdout = sp.PIPE)
+        p = sp.Popen("kpsewhich --show-path=bst", shell = True, stdout = sp.PIPE, stderr = sp.STDOUT, env = os.environ)
         bst_path = p.communicate()[0].decode('utf-8')
 
         # Restore old path
