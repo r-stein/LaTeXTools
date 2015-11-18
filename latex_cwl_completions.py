@@ -43,12 +43,18 @@ class LatexCwlCompletion(sublime_plugin.EventListener):
         if not view.score_selector(point, "text.tex.latex"):
             return []
 
+        line = view.substr(get_Region(view.line(point).a, point))
+        if re.match(r".*\\(?:(begin)|(end))\{[^\}]*$", line):
+            completions = parse_cwl_file(True)
+            if view.substr(sublime.Region(point, point + 1)) != "}":
+                completions = [(x[0], x[1] + "}") for x in completions]
+            return completions
+
         bpoint = point - len(prefix)
         char_before = view.substr(sublime.Region(bpoint - 1, bpoint))
         if char_before != "\\":
             return []
 
-        line = view.substr(get_Region(view.line(point).a, point))
         line = line[::-1]
 
         # Do not do completions in actions
@@ -104,7 +110,7 @@ class LatexCwlCompletion(sublime_plugin.EventListener):
                 })
                 g_settings.set("auto_complete_triggers", acts)
 
-def parse_cwl_file():
+def parse_cwl_file(is_begin_env=False):
     # Get cwl file list
     # cwl_path = sublime.packages_path() + "/LaTeX-cwl"
     settings = sublime.load_settings("LaTeXTools.sublime-settings")
@@ -149,6 +155,22 @@ def parse_cwl_file():
                 finally:
                     f.close()
 
+        method = os.path.splitext(os.path.basename(cwl))[0]
+
+        if not is_begin_env:
+            def createItem(line):
+                keyword = line.strip()
+                item = (u'%s\t%s' % (keyword, method), parse_keyword(keyword))
+                return item
+        else:
+            def createItem(line):
+                pbe = parse_begine_end(line.strip())
+                if pbe is None:
+                    return
+                keyword, entry = pbe
+                item = (u'%s\t%s' % (keyword, method), entry)
+                return item
+
         for line in s.split('\n'):
             line = line.strip()
             if line == '':
@@ -156,12 +178,29 @@ def parse_cwl_file():
             if line[0] == '#':
                 continue
 
-            keyword = line.strip()
-            method = os.path.splitext(os.path.basename(cwl))[0]
-            item = (u'%s\t%s' % (keyword, method), parse_keyword(keyword))
-            completions.append(item)
+            item = createItem(line)
+            if item is not None:
+                completions.append(item)
 
     return completions
+
+
+def parse_begine_end(line):
+    lre = re.compile(
+        r"\\begin(?:\[.*\])?"
+        r"\{(?P<env>[^\}]*)\}"
+        r"(?P<after>(?:\{[^\}]*\})*)"
+        )
+
+    def compatible(x):
+        return re.sub(r"[\{\}\s\*]", "-", x)
+    m = lre.search(line)
+    if m and m.group("env"):
+        env = m.group("env")
+        if not m.group("after"):
+            return (compatible(env), env)
+        after = m.group("after")
+        return ("%s%s"%(compatible(env), compatible(after)), "%s}%s"%(env, parse_keyword(after)[:-1]))
 
 
 def parse_keyword(keyword):
