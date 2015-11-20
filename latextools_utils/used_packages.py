@@ -30,8 +30,9 @@ def _get_used_packages(view):
     tex_root = get_tex_root(view)
     if not tex_root:
         return
-    pkg = cache.read(tex_root, _PKG_CACHE)
-    if pkg is None:
+    try:
+        pkg = cache.read(tex_root, _PKG_CACHE)
+    except cache.CacheMiss:
         ana = get_analysis(tex_root)
         pkg = list(_create_used_packages(ana))
         cache.write(tex_root, _PKG_CACHE, pkg)
