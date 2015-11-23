@@ -20,34 +20,40 @@ class LatexSelfDefinedCommandCompletion(sublime_plugin.EventListener):
         if not view.score_selector(point, "text.tex.latex"):
             return []
 
+        tex_root = get_tex_root(view)
+
         # environment completion for \begin{ and \end{
         line = view.substr(get_Region(view.line(point).a, point))
         if re.match(r".*\\(?:(begin)|(end))\{[^\}]*$", line):
-            ana = analysis.get_analysis(view)
-            com = ana.filter_commands(["newenvironment", "renewenvironment"])
-            return [(c.args + "\tself-defined", c.args) for c in com]
+            return cache.cache(tex_root, "own_env_completion",
+                               lambda:
+                               [(c.args + "\tself-defined", c.args) for c in
+                                analysis.get_analysis(tex_root)
+                                        .filter_commands([
+                                            "newenvironment",
+                                            "renewenvironment"])])
 
-        # only complete if it is a command
-        tex_root = get_tex_root(view)
-        try:
-            res = cache.read(tex_root, "own_command_completion")
-        except cache.CacheMiss:
-            bpoint = point - len(prefix)
-            char_before = view.substr(sublime.Region(bpoint - 1, bpoint))
-            if char_before != "\\":
-                return []
-            ana = analysis.get_analysis(view)
+        def create_completion():
+            ana = analysis.get_analysis(tex_root)
             com = ana.filter_commands(["newcommand", "renewcommand"])
+            return [_parse_command(c) for c in com]
 
-            res = [(c.args + "\tself-defined", _parse_command(c)) for c in com]
-            cache.write(tex_root, "own_command_completion", res)
+        res = cache.cache(tex_root, "own_command_completion",
+                          create_completion)
+
+        bpoint = point - len(prefix)
+        char_before = view.substr(sublime.Region(bpoint - 1, bpoint))
+        if char_before == "\\":
+            res = [(c[0], c[1][1:]) for c in res]
         return res
 
 
 def _parse_command(c):
-    if not c.optargs2:
-        return c.args + "{}"
+    class NoArgs(Exception):
+        pass
     try:
+        if not c.optargs2:
+            raise NoArgs()
         arg_count = int(c.optargs2)
         has_opt = bool(c.optargs2a)
         s = c.args
@@ -55,8 +61,10 @@ def _parse_command(c):
             s += "[{0}]".format(c.optargs2a)
             arg_count -= 1
         elif arg_count == 0:
-            return s + "{}"
+            raise NoArgs()
         s += "{arg}" * arg_count
-        return latex_cwl_completions.parse_keyword(s)
-    except:
-        return c.args + "{}"
+        comp = latex_cwl_completions.parse_keyword(s)
+    except:  # no args
+        s = c.args + "{}"
+        comp = s
+    return (s + "\tself-defined", comp)
