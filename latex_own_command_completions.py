@@ -3,11 +3,13 @@ import sublime_plugin
 import re
 
 try:
-    from .latextools_utils import analysis
+    from .latextools_utils import analysis, cache
+    from .getTeXRoot import get_tex_root
     from .getRegion import get_Region
     from . import latex_cwl_completions
 except:
-    from latextools_utils import analysis
+    from latextools_utils import analysis, cache
+    from getTeXRoot import get_tex_root
     from getRegion import get_Region
     import latex_cwl_completions
 
@@ -26,14 +28,19 @@ class LatexSelfDefinedCommandCompletion(sublime_plugin.EventListener):
             return [(c.args + "\tself-defined", c.args) for c in com]
 
         # only complete if it is a command
-        bpoint = point - len(prefix)
-        char_before = view.substr(sublime.Region(bpoint - 1, bpoint))
-        if char_before != "\\":
-            return []
-        ana = analysis.get_analysis(view)
-        com = ana.filter_commands(["newcommand", "renewcommand"])
+        tex_root = get_tex_root(view)
+        try:
+            res = cache.read(tex_root, "own_command_completion")
+        except cache.CacheMiss:
+            bpoint = point - len(prefix)
+            char_before = view.substr(sublime.Region(bpoint - 1, bpoint))
+            if char_before != "\\":
+                return []
+            ana = analysis.get_analysis(view)
+            com = ana.filter_commands(["newcommand", "renewcommand"])
 
-        res = [(c.args + "\tself-defined", _parse_command(c)) for c in com]
+            res = [(c.args + "\tself-defined", _parse_command(c)) for c in com]
+            cache.write(tex_root, "own_command_completion", res)
         return res
 
 

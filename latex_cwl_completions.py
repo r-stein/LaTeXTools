@@ -17,6 +17,8 @@ else:
     from .latex_cite_completions import OLD_STYLE_CITE_REGEX, NEW_STYLE_CITE_REGEX, match
     from .latex_ref_completions import OLD_STYLE_REF_REGEX, NEW_STYLE_REF_REGEX
     from .getRegion import get_Region
+    from .latextools_utils import cache
+    from .getTeXRoot import get_tex_root
     from .latextools_utils.used_packages import used_package_names
 
 # Do not do completions in these envrioments
@@ -62,23 +64,29 @@ class LatexCwlCompletion(sublime_plugin.EventListener):
             if match(rex, line) != None:
                 return []
 
-        completions = parse_cwl_file()
-        # autocompleting with slash already on line
-        # this is necessary to work around a short-coming in ST where having a keyed entry
-        # appears to interfere with it recognising that there is a \ already on the line
-        #
-        # NB this may not work if there are other punctuation marks in the completion
-        # since these are rare in TeX, this is probably ok
-        if len(line) > 0 and line[0] == '\\':
-            _completions = []
-            for completion in completions:
-                _completion = completion[1]
-                if  _completion[0] == '\\' and '${1:' in _completion:
-                    completion = (completion[0], _completion[1:])
-                _completions.append(completion)
-        else:
-            _completions = completions
-        return (_completions, sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS)
+        tex_root = get_tex_root(view)
+        try:
+            res = cache.read(tex_root, "cwl_completion")
+        except:
+            completions = parse_cwl_file()
+            # autocompleting with slash already on line
+            # this is necessary to work around a short-coming in ST where having a keyed entry
+            # appears to interfere with it recognising that there is a \ already on the line
+            #
+            # NB this may not work if there are other punctuation marks in the completion
+            # since these are rare in TeX, this is probably ok
+            if len(line) > 0 and line[0] == '\\':
+                _completions = []
+                for completion in completions:
+                    _completion = completion[1]
+                    if  _completion[0] == '\\' and '${1:' in _completion:
+                        completion = (completion[0], _completion[1:])
+                    _completions.append(completion)
+            else:
+                _completions = completions
+            res = (_completions, sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS)
+            cache.write(tex_root, "cwl_completion", res)
+        return res
 
     # This functions is to determine whether LaTeX-cwl is installed,
     # if so, trigger auto-completion in latex buffers by '\'
