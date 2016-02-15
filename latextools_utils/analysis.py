@@ -4,14 +4,12 @@ import itertools
 
 import sublime
 
-try:
-    _ST3 = True
-    from ..getTeXRoot import get_tex_root
-    from . import cache, utils
-except:
+if sublime.version() < '3000':
     _ST3 = False
-    from getTeXRoot import get_tex_root
-    from latextools_utils import cache, utils
+    from latextools_utils import cache, get_tex_root, utils
+else:
+    _ST3 = True
+    from . import cache, get_tex_root, utils
 
 # because we cannot natively pickle sublime.Region in ST2
 # we provide the ability to pickle
