@@ -89,13 +89,14 @@ def _create_document(view, scope):
 
 
 def _call_shell_command(command):
-    """Call the command with shell=True and wait for it to finish"""
+    """Call the command with shell=True and wait for it to finish."""
     subprocess.Popen(command,
                      shell=True,
                      startupinfo=startupinfo).wait()
 
 
 def _create_image(view, temp_path, base_name, latex_document):
+    """Create an image for a latex document."""
     source_path = base_name + ".tex"
     pdf_path = base_name + ".pdf"
     image_path = base_name + _IMAGE_EXTENSION
@@ -108,10 +109,13 @@ def _create_image(view, temp_path, base_name, latex_document):
     with open(source_path, "w") as f:
         f.write(latex_document)
 
+    # compile the latex document
     _call_shell_command(
         "pdflatex -shell-escape -interaction=nonstopmode {source_path}"
         .format(**locals())
     )
+
+    # convert the pdf to a png image
     # TODO read this from the settings
     density = 150
     _call_shell_command(
@@ -130,6 +134,7 @@ def _create_image(view, temp_path, base_name, latex_document):
 
 
 def _show_image(view, image_path, location):
+    """Show the image in the html popup."""
     # don't show the image if it is already visible (don't let it blink)
     if view.settings().get("math_preview_image") == image_path:
         return
@@ -138,7 +143,7 @@ def _show_image(view, image_path, location):
     def on_hide():
         view.settings().erase("math_preview_image")
 
-    html_content = '<div><img src="file://{0}" /></div>'.format(image_path)
+    html_content = '<img src="file://{0}" />'.format(image_path)
 
     def show():
         # don't hide when auto complete is visible
