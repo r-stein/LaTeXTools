@@ -185,3 +185,56 @@ def preview_math(view, pos, live_preview=False):
     _create_image(view, temp_path, base_name, latex_document)
     # show the image
     _show_image(view, full_image_path, location)
+
+
+def _pos(view):
+    return view.sel()[0].b
+
+
+class LatexMathLivePreview(sublime_plugin.EventListener):
+    def __init__(self):
+        self._modifications = 0
+        self._sel_modifications = 0
+
+    def _is_preview_enabled(self, view):
+        if len(view.sel()) != 1:
+            return False
+        if not view.score_selector(_pos(view), "meta.environment.math"):
+            return False
+        if not get_setting("math_live_preview"):
+            return False
+        return True
+
+    def on_after_modified_async(self, view):
+        if not self._is_preview_enabled(view):
+            return
+        preview_math(view, _pos(view), live_preview=True)
+
+    def on_after_selection_modified_async(self, view):
+        if not self._is_preview_enabled(view):
+            return
+        preview_math(view, _pos(view), live_preview=True)
+
+    def _validate_after_modified(self, view):
+        self._modifications -= 1
+        if self._modifications == 0:
+            sublime.set_timeout_async(
+                lambda: self.on_after_modified_async(view))
+
+    def on_modified(self, view):
+        self._modifications += 1
+        sublime.set_timeout(lambda: self._validate_after_modified(view), 600)
+
+    def _validate_after_selection_modified(self, view):
+        self._sel_modifications -= 1
+        if self._sel_modifications == 0:
+            sublime.set_timeout_async(
+                lambda: self.on_after_selection_modified_async(view))
+
+    def on_selection_modified(self, view):
+        # ignore selection modifications if there were normal modifications
+        if self._modifications:
+            return
+        self._sel_modifications += 1
+        sublime.set_timeout(
+            lambda: self._validate_after_selection_modified(view), 600)
