@@ -4,10 +4,12 @@ import re
 import sublime
 import sublime_plugin
 
+import mdpopups
+
 from .getTeXRoot import get_tex_root
 from .latextools_utils import analysis, ana_utils, quickpanel, utils
 from .latextools_utils.tex_directives import TEX_DIRECTIVE
-from .latex_cite_completions import NEW_STYLE_CITE_REGEX
+from .latex_cite_completions import NEW_STYLE_CITE_REGEX, get_cite_completions
 from .latex_glossary_completions import ACR_LINE_RE, GLO_LINE_RE
 from .latex_ref_completions import NEW_STYLE_REF_REGEX
 from .jumpto_tex_file import INPUT_REG, IMPORT_REG, BIB_REG, IMAGE_REG
@@ -58,6 +60,100 @@ def _get_selected_arg(view, com_reg, pos):
     arg = arg.strip()
 
     return arg
+
+
+class JumptoAnywhereHelper(object):
+    @staticmethod
+    def get_regex():
+        raise NotImplemented()
+
+    @staticmethod
+    def show_popup(view, com_reg, pos, location):
+        pass
+
+    @staticmethod
+    def execute_jump(view, com_reg, pos):
+        pass
+
+
+class JumptoAnywhereCiteHelper(JumptoAnywhereHelper):
+    @staticmethod
+    def get_regex():
+        return NEW_STYLE_CITE_REGEX
+
+    @staticmethod
+    def show_popup(view, com_reg, pos, location):
+        tex_root = get_tex_root(view)
+        bib_key = _get_selected_arg(view, com_reg, pos)
+        if tex_root is None or not bib_key:
+            return
+        compl = get_cite_completions(view)
+        try:
+            item = next(c for c in compl if c.get("keyword", None) == bib_key)
+        except StopIteration:
+            return
+        content = (
+            "**Citation**\n" +
+            "\n".join(item.get("<panel_formatted>", "")) +
+            "\n[(Jump)](jump)"
+        )
+
+        def on_navigate(href):
+            JumptoAnywhereCiteHelper.execute_jump(view, com_reg, pos)
+        mdpopups.show_popup(
+            view, content=content,
+            on_navigate=on_navigate,
+            md=True, location=location,
+            flags=sublime.HIDE_ON_MOUSE_MOVE_AWAY
+        )
+
+    @staticmethod
+    def execute_jump(view, com_reg, pos):
+        tex_root = get_tex_root(view)
+        bib_key = _get_selected_arg(view, com_reg, pos)
+        if tex_root is None or not bib_key:
+            return
+        message = (
+            "Scanning bibliography files for key '{0}'..."
+            .format(bib_key)
+        )
+        print(message)
+        sublime.status_message(message)
+        base_dir = os.path.dirname(tex_root)
+        ana = analysis.get_analysis(tex_root)
+
+        bib_commands = ana.filter_commands(
+            ["bibliography", "nobibliography", "addbibresource"])
+        for bib_command in bib_commands:
+            for bib_file in jumpto_tex_file._split_bib_args(bib_command.args):
+                if not os.path.splitext(bib_file)[1]:
+                    bib_file += ".bib"
+                bib_file = os.path.join(base_dir, bib_file)
+                try:
+                    file_content = utils.read_file_unix_endings(bib_file)
+                    start = file_content.find(bib_key)
+                    end = start + len(bib_key)
+                    # check that we found the entry and we are not inside a word
+                    if (start == -1 or
+                            file_content[start - 1:start].isalnum() or
+                            file_content[end:end + 1].isalnum()):
+                        continue
+                    region = sublime.Region(start, end)
+                    message = (
+                        "Jumping to bibliography key '{0}'."
+                        .format(bib_key)
+                    )
+                    print(message)
+                    sublime.status_message(message)
+                    utils.open_and_select_region(view, bib_file, region)
+                    return
+                except Exception as e:
+                    print("Error occurred opening file {0}".format(bib_file))
+                    print(e)
+                    continue
+        message = "Entry '{0}' not found in bibliography.".format(bib_key)
+        print(message)
+        sublime.status_message(message)
 
 
 def _show_usage_label(view, args):
@@ -114,44 +210,7 @@ def _jumpto_ref(view, com_reg, pos):
 
 
 def _jumpto_cite(view, com_reg, pos):
-    tex_root = get_tex_root(view)
-    bib_key = _get_selected_arg(view, com_reg, pos)
-    if tex_root is None or not bib_key:
-        return
-    message = "Scanning bibliography files for key '{0}'...".format(bib_key)
-    print(message)
-    sublime.status_message(message)
-    base_dir = os.path.dirname(tex_root)
-    ana = analysis.get_analysis(tex_root)
-
-    bib_commands = ana.filter_commands(
-        ["bibliography", "nobibliography", "addbibresource"])
-    for bib_command in bib_commands:
-        for bib_file in jumpto_tex_file._split_bib_args(bib_command.args):
-            if not os.path.splitext(bib_file)[1]:
-                bib_file += ".bib"
-            bib_file = os.path.join(base_dir, bib_file)
-            try:
-                file_content = utils.read_file_unix_endings(bib_file)
-                start = file_content.find(bib_key)
-                end = start + len(bib_key)
-                # check that we found the entry and we are not inside a word
-                if (start == -1 or file_content[start - 1:start].isalnum() or
-                        file_content[end:end + 1].isalnum()):
-                    continue
-                region = sublime.Region(start, end)
-                message = "Jumping to bibliography key '{0}'.".format(bib_key)
-                print(message)
-                sublime.status_message(message)
-                utils.open_and_select_region(view, bib_file, region)
-                return
-            except Exception as e:
-                print("Error occurred opening file {0}".format(bib_file))
-                print(e)
-                continue
-    message = "Entry '{0}' not found in bibliography.".format(bib_key)
-    print(message)
-    sublime.status_message(message)
+    JumptoAnywhereCiteHelper.execute_jump(view, com_reg, pos)
 
 
 def _jumpto_glo(view, com_reg, pos, acr=False):
@@ -354,3 +413,43 @@ class JumptoTexAnywhereByMouseCommand(sublime_plugin.WindowCommand):
         pos = view.window_to_text((event["x"], event["y"]))
         view.sel().clear()
         view.sel().add(sublime.Region(pos, pos))
+
+
+class JumptoTexAnywhereHover(sublime_plugin.EventListener):
+    def on_hover(self, view, point, hover_zone):
+        if hover_zone != sublime.HOVER_TEXT:
+            return
+        if view.is_popup_visible():
+            return
+        if not view.score_selector(point, "text.tex"):
+            return
+
+        sel = sublime.Region(point, point)
+        line_r = view.line(sel)
+        line = view.substr(line_r)
+
+        def is_inside(g):
+            """check whether the selection is inside the command"""
+            if g is None:
+                return False
+            b = line_r.begin()
+            # the region, which should contain the selection
+            reg = g.regs[0]
+            return reg[0] <= sel.begin() - b and sel.end() - b <= reg[1]
+
+        try:
+            com_reg = next(filter(is_inside, COMMAND_REG.finditer(line)))
+        except StopIteration:
+            return
+
+        command = com_reg.group("command")
+        reversed_command = "{" + command[::-1] + "\\"
+        # the cursor position inside the command
+        pos = sel.b - line_r.begin() - com_reg.start()
+        classes = [
+            JumptoAnywhereCiteHelper
+        ]
+        location = sel.b
+        for clss in classes:
+            if clss.get_regex().match(reversed_command):
+                clss.show_popup(view, com_reg, pos, location)
